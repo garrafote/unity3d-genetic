@@ -11,7 +11,7 @@ namespace ParametricLSystem
         public string[] Parameters;
         public string Fallback;
         public readonly IDictionary<string, string> Conditionals = new Dictionary<string, string>();
-        public Action<string[]> Delegate;
+        public Action<object, string[]> Delegate;
 
         public LSystemRule Conditional(string condition, string value)
         {

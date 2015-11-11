@@ -14,16 +14,18 @@ namespace ParametricLSystem
         public static readonly Regex TokenPattern = new Regex(@"(?<token>(\[)|(\])|(\{(?<content>.*?)\}(?<iterations>\(.+?\)))|(\w+<.*?>))", RegexOptions.ExplicitCapture);
 
         public readonly IDictionary<string, LSystemRule> Rules = new Dictionary<string, LSystemRule>();
-        public Action PushDelegate;
-        public Action PullDelegate;
+        public Action<object> PushDelegate;
+        public Action<object> PullDelegate;
+        public Action<object, string> PrepareDelegate;
 
-        public LSystem(Action push, Action pull)
+        public LSystem(Action<object> push, Action<object> pull, Action<object, string> prepare)
         {
             PushDelegate = push;
             PullDelegate = pull;
+            PrepareDelegate = prepare;
         }
 
-        public LSystemRule AddRule(string key, Action<string[]> delegatAction)
+        public LSystemRule AddRule(string key, Action<object, string[]> delegatAction)
         {
             var match = RulePattern.Match(key);
             if (!match.Success)
@@ -45,7 +47,7 @@ namespace ParametricLSystem
 
         // Expands the axiom iteration times parsing all arguments
         // then executes delegates for the resulting expression
-        public void Execute(string axiom, int iterations)
+        public void Execute(string axiom, object customData, int iterations)
         {
             // iterate over the axiom before executing
             for (int i = 0; i < iterations; i++)
@@ -53,12 +55,12 @@ namespace ParametricLSystem
                 axiom = ExpandAxiom(axiom);
             }
 
-            Execute(axiom);
+            Execute(axiom, customData);
         }
 
         // Executes the delegates for a given axiom
         // This version of Execute doesn't parse axiom arguments
-        public void Execute(string axiom)
+        public void Execute(string axiom, object customData)
         {
             // break the axiom into tokens and then execute each token
             var matches = TokenPattern.Matches(axiom);
@@ -70,12 +72,12 @@ namespace ParametricLSystem
                 if (capture.StartsWith("["))
                 {
                     // push
-                    PushDelegate();
+                    PushDelegate(customData);
                 }
                 else if (capture.StartsWith("]"))
                 {
                     // pop
-                    PullDelegate();
+                    PullDelegate(customData);
                 }
                 else if (capture.StartsWith("{"))
                 {
@@ -94,23 +96,24 @@ namespace ParametricLSystem
                     var expandedContent = ExpandAxiom(content);
                     for (int j = 0; j < repetitions; j++)
                     {
-                        Execute(expandedContent);
+                        Execute(expandedContent, customData);
                     }
                 }
                 else
                 {
-                    ExecuteToken(capture);
+                    ExecuteToken(capture, customData);
                 }
             }
         }
-        private void ExecuteToken(string value)
+        private void ExecuteToken(string value, object customData)
         {
             var match = RulePattern.Match(value);
             var key = match.Groups["key"].Value;
             var args = match.Groups["params"].Value.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
 
             var rule = Rules[key];
-            rule.Delegate(args);
+            PrepareDelegate(customData, rule.Atom);
+            rule.Delegate(customData, args);
         }
 
         private string ExpandAxiom(string axiom)
