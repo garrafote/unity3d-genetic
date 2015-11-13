@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using UnityEngine;
 using ParametricLSystem;
+using UnityEngine.UI;
 using Random = UnityEngine.Random;
 
 public class LSystemTest : MonoBehaviour {
@@ -44,6 +45,7 @@ public class LSystemTest : MonoBehaviour {
 
     private LSystem sys;
     private LSystemRule[] basicRules;
+    private LSystemRule[] generationRules;
     private string[] ops = new[] { "+", "-", "*" };
 
     private int currentCreatureId;
@@ -51,6 +53,12 @@ public class LSystemTest : MonoBehaviour {
 
     private List<Creature> evaluatedCreatures;
     private int creaturesToEvaluate;
+
+    public Text genText;
+    public Text genBestFitText;
+    public Text allTimeBestFitText;
+
+    public float allTimeBestFit;
 
     public Material[] materials;
 
@@ -69,6 +77,11 @@ public class LSystemTest : MonoBehaviour {
         sys.AddRule("R<x>", RollCommand);
         sys.AddRule("P<x>", PitchCommand);
         sys.AddRule("Y<x>", YawCommand);
+
+
+        //Add Mass
+	    sys.AddRule("M<x>", MassCommand);
+
 
         sys.AddRule("F<x>", ForwardCommand);
 
@@ -110,17 +123,29 @@ public class LSystemTest : MonoBehaviour {
         // wern't fit according to the fittness function
         var discardedCreatures = rankedCreatures.Skip(20).ToList();
 
+        var bestFit = rankedCreatures.First().finalDistance;
+        if (bestFit > allTimeBestFit)
+        {
+            allTimeBestFit = bestFit;
+        }
+
+        genText.text = currentGenerationId.ToString();
+        genBestFitText.text = bestFit.ToString("F4");
+        allTimeBestFitText.text = allTimeBestFit.ToString("F4");
+
+        generationRules = sys.Rules.Values.ToArray();
+
         // start creating the new generation of creatures
         currentGenerationId += 1;
         currentCreatureId = 0;
 
         // top 20 will be randomly mutated
-        foreach (var creature in rankedCreatures.Take(5))
+        foreach (var creature in rankedCreatures.Take(1))
         {
             genotypes.Add(creature.genotype);
         }
 
-        foreach (var creature in rankedCreatures.Skip(5).Take(15))
+        foreach (var creature in rankedCreatures.Skip(1).Take(19))
         {
             if (Random.Range(0.0f, 1.0f) > 0.4f)
             {
@@ -166,7 +191,7 @@ public class LSystemTest : MonoBehaviour {
 
         foreach (var creature in discardedCreatures)
         {
-            sys.Rules.Remove(creature.genotype);
+            //sys.Rules.Remove(creature.genotype);
         }
 
         foreach (var creature in evaluatedCreatures)
@@ -210,7 +235,7 @@ public class LSystemTest : MonoBehaviour {
     private string AddToken(string genotype)
     {
         var gen = Tokenize(genotype);
-        gen.tokens.Insert(Random.Range(0, gen.tokens.Count), CreateToken());
+        gen.tokens.Insert(Random.Range(0, gen.tokens.Count), CreateToken(generationRules));
 
         return string.Join("", gen.tokens.ToArray());
     }
@@ -472,7 +497,7 @@ public class LSystemTest : MonoBehaviour {
                 genotype += openWrap;
             }
 
-            genotype += CreateToken();
+            genotype += CreateToken(basicRules);
 
             if (closeWrapIndex == i)
             {
@@ -491,9 +516,9 @@ public class LSystemTest : MonoBehaviour {
         return genotypeId;
     }
 
-    private string CreateToken()
+    private string CreateToken(LSystemRule[] ruleset)
     {
-        var rule = basicRules[Random.Range(0, basicRules.Length)];
+        var rule = ruleset[Random.Range(0, ruleset.Length)];//basicRules[Random.Range(0, basicRules.Length)];
         var args = new string[rule.Parameters.Length];
         for (int j = 0; j < args.Length; j++)
         {
@@ -579,16 +604,27 @@ public class LSystemTest : MonoBehaviour {
     }
 
 
+    void MassCommand(object data, string[] args)
+    {
+        var value = float.Parse(args[0]);
+        var turtle = (Turtle)data;
+
+        Mass(turtle, value);
+    }
+
+
     void RevoluteCommand(object data, string[] args)
     {
         var value = float.Parse(args[0]);
         var turtle = (Turtle)data;
 
         AddPivot(turtle);
-        //Pitch(1);
         Revolute(turtle, value);
+        Pitch(turtle, 1);
         Forward(turtle, 1);
-        //Pitch(-1);
+        AddNode(turtle);
+        Pitch(turtle, -1);
+        Forward(turtle, 1);
         AddNode(turtle);
     }
 
@@ -600,6 +636,10 @@ public class LSystemTest : MonoBehaviour {
 
         AddPivot(turtle);
         Revolute2(turtle, value);
+        Pitch(turtle, 1);
+        Forward(turtle, 1);
+        AddNode(turtle);
+        Pitch(turtle, -1);
         Forward(turtle, 1);
         AddNode(turtle);
     }
@@ -656,13 +696,15 @@ public class LSystemTest : MonoBehaviour {
 
         AddPivot(turtle);
         AddNode(turtle);
+        Forward(turtle, 1);
+        AddNode(turtle);
 
         // add pivot sets state.pivot to the added pivot
         var joint = turtle.state.pivot.gameObject.AddComponent<FixedJoint>();
         joint.connectedBody = rb;
 
         // always start with params 1 and 1
-        sys.Execute(genotype + "<1,1>", turtle, 1);
+        sys.Execute(genotype + "<1,1>", turtle, 6);
 
         return cr;
     }
@@ -787,6 +829,13 @@ public class LSystemTest : MonoBehaviour {
     void Yaw(Turtle turtle, float value)
     {
         turtle.state.direction *= Quaternion.Euler(RotationY * value);
+    }
+
+
+    void Mass(Turtle turtle, float value)
+    {
+        var rb = turtle.state.pivot.GetComponent<Rigidbody>();
+        rb.mass = Mathf.Max(1, rb.mass + value);
     }
 
 
